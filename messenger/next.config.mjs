@@ -13,5 +13,8 @@ const config = {
     locales: ["en"],
     defaultLocale: "en",
   },
+  images: {
+    domains: ['github.com' , 'thisisrnb.com', 'upload.wikimedia.org']
+  }
 };
 export default config;

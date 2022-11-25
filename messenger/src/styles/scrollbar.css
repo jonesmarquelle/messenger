@@ -1,0 +1,23 @@
+.scrollbar {
+    scroll-behavior: smooth;
+}
+
+/* Width */
+.scrollbar::-webkit-scrollbar {
+    width: 7px;
+}
+  
+/* Track */
+.scrollbar::-webkit-scrollbar-track {
+    background: black;
+}
+
+/* Handle */
+.scrollbar::-webkit-scrollbar-thumb {
+    background: white;
+}
+  
+/* Handle on hover */
+.scrollbar::-webkit-scrollbar-thumb:hover {
+    background: #555;
+}
