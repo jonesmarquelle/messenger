@@ -1,0 +1,41 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Message {
+  messageId   Int      @default(autoincrement())
+  groupId     Int
+  sender      User     @relation(fields: [userId, senderName], references: [id, username])
+  timestamp   DateTime @default(now()) @db.Timestamptz(6)
+  message     String
+  group       Group    @relation(fields: [groupId], references: [id])
+  userId      String   @db.Uuid
+  senderName  String
+
+  @@id([messageId, groupId])
+}
+
+model Group {
+  id       Int       @id @default(autoincrement())
+  name     String    
+  iconUrl  String?   @db.VarChar(2048)
+  members  User[]
+  messages Message[]
+}
+
+model User {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  username  String    @unique(map: "users_username_unique") @db.VarChar(24)
+  pwHash    String    @db.Char(60)
+  avatarUrl String?   @db.VarChar(2048)
+  online    Boolean   @default(true)
+  groups    Group[]
+  messages  Message[]
+
+  @@unique([id, username])
+}
