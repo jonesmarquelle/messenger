@@ -14,7 +14,7 @@ const config = {
     defaultLocale: "en",
   },
   images: {
-    domains: ['github.com' , 'thisisrnb.com', 'upload.wikimedia.org', 'i.imgur.com']
+    domains: ['avatars.githubusercontent.com']
   }
 };
 export default config;
