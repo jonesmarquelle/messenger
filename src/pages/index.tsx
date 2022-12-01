@@ -90,7 +90,7 @@ const Home: NextPage<{signin: string}> = ({signin}) => {
   const onClickSend = () => {
     const message = textAreaRef.current?.innerText;
     if (!message || !currentGroup || !currentUser) return;
-    sendMessage(message, currentUser.id, currentGroup.id);
+    sendMessage(message.trim(), currentUser.id, currentGroup.id);
     textAreaRef.current.innerText = '';
   };
 

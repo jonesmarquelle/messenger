@@ -13,6 +13,13 @@ interface ChatViewProps {
 }
 
 const ChatView: React.FC<ChatViewProps> = (props) => {
+    const onKeyPressed = (e: React.KeyboardEvent) => {
+      if (e.shiftKey) return;
+      if (e.key === "Enter") {
+        e.preventDefault;
+        props.sendMessageFn();
+      }
+    }
     return (
         <>
         <div className="flex flex-col w-full h-full items-center gap-6">
@@ -47,6 +54,7 @@ const ChatView: React.FC<ChatViewProps> = (props) => {
                 </button>
                 {/** Text Area */}
                 <div 
+                  onKeyDown={onKeyPressed}
                   className="flex w-full min-h-[2rem] max-h-[6rem] items-center break-words overflow-x-hidden overflow-y-auto scrollbar resize-none bg-black border-[1px] text-white p-2"
                   ref={props.textBoxRef}
                   id="textMessage" contentEditable 
