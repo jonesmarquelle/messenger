@@ -1,8 +1,10 @@
 import { useState } from "react";
+import { DBGroupAction } from "../pages";
 
 interface CreateGroupFormProps {
     userId: string
     closeFn: () => void
+    createGroupCallback: (groupId: number) => void
 }
 
 const CreateGroupForm: React.FC<CreateGroupFormProps> = (props) => {
@@ -26,15 +28,15 @@ const CreateGroupForm: React.FC<CreateGroupFormProps> = (props) => {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ 
-            groupName, userId: props.userId, groupIcon
+            groupName, userId: props.userId, groupIcon, action: DBGroupAction.create
           })
         };
-        const newGroup = await fetch('/api/groups', request);
-        if (newGroup.status != 200) {
+        const newGroup = await (await fetch('/api/groups', request)).json();
+        if (newGroup.ok) {
           console.error("Failed to create group");
           return;
         }
-    
+        props.createGroupCallback(newGroup.id);
       };
 
     return (
@@ -42,7 +44,7 @@ const CreateGroupForm: React.FC<CreateGroupFormProps> = (props) => {
             <div className="flex flex-col w-fit items-center place-content-center m-auto p-6 gap-8 border-2">
                 <button className="ml-auto text-white -m-4" onClick={props.closeFn}>X</button>
                 <h2 className="text-4xl text-white">Create New Group</h2>
-                <form className="flex flex-col w-3/4 h-full text-center place-content-center gap-6 text-2xl text-white">
+                <form onSubmit={e=>e.preventDefault()}className="flex flex-col w-3/4 h-full text-center place-content-center gap-6 text-2xl text-white">
                     <label htmlFor="groupName">
                         Group Name
                     </label>

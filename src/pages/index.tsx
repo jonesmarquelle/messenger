@@ -8,22 +8,34 @@ import type { Group, Message, User } from '@prisma/client';
 import { PrismaClient } from '@prisma/client';
 import { unstable_getServerSession } from "next-auth";
 import { authOptions } from "./api/auth/[...nextauth]";
-import Sidebar from "../components/Sidebar";
+import Sidebar, { SidebarGroup } from "../components/Sidebar";
 import ChatView from "../components/ChatView";
 import CreateGroupForm from "../components/CreateGroupForm";
-import AddGroupMemberForm from "../components/AddGroupMemberForm";
+import GroupMemberForm from "../components/GroupMemberForm";
 import CreateGroupCTA from "../components/CreateGroupCTA";
+import { useUser } from "../hooks/userHooks";
+import { getMessagesByGroup, GroupAndMembers, MessageWithSender } from "../server/db/queries";
+import { useMessages } from "../hooks/messagesHook";
+import { useGroups, useMembers } from "../hooks/groupsHook";
 
 const oxanium = Oxanium({subsets: ['latin']});
 
-export type MessageWithSender = Message & { sender: User; }
-export type GroupAndMessages = Group & { messages: MessageWithSender[] }
+export enum DBGroupAction {
+  create = "create",
+  addMember = "addMember",
+  removeMember = "removeMember"
+}
 
-const Home: NextPage<{currentUser: User, groupsWithMessages: GroupAndMessages[]}> = ({currentUser, groupsWithMessages}) => {
-  const [currentGroup, setCurrentGroup] = useState<GroupAndMessages>();
-  const [messages, setMessages] = useState<MessageWithSender[]>([]);
-  const [gwm, setGwm] = useState<GroupAndMessages[]>(groupsWithMessages);
-  const [currentGroupIndex, setCurrentGroupIndex] = useState<number>();
+export enum DBMessageAction {
+  create = "createMessage"
+}
+
+const Home: NextPage<{signin: string}> = ({signin}) => {
+  const [currentGroup, setCurrentGroup] = useState<GroupAndMembers>();
+
+  const {user: currentUser, isLoading: userLoading, isError: userError} = useUser(signin);
+  const {groups: allGroups, refreshGroups, isError: groupsError, isLoading: groupsLoading} = useGroups(signin);
+  const {messages, refreshMessages, isError: messagesError} = useMessages(currentGroup?.id);
 
   const [showAddMember, setShowAddMember] = useState<boolean>(false);
   const [showChatView, setShowChatView] = useState<boolean>(true);
@@ -54,20 +66,25 @@ const Home: NextPage<{currentUser: User, groupsWithMessages: GroupAndMessages[]}
     chatViewRef.current?.scrollTo(0, chatViewRef.current.scrollHeight);
   })
 
-  useEffect(() => {
-    if (currentGroupIndex === undefined) return;
-    const newGwm = [...gwm];
-    newGwm[currentGroupIndex]!.messages = messages;
-    setGwm(newGwm);
-  }, [currentGroupIndex, messages])
+  const onMemberRemoved = async () => {
+    setCurrentGroup(undefined);
+    await refreshGroups();
+    closeAddMemberForm()
+  }
+
+  const onGroupCreated = async (groupId: number) => {
+    await refreshGroups();
+    onClickGroup(groupId);
+  }
 
   const onClickGroup = (groupId: number) => {
-    const groupIndex = gwm.findIndex((groupsWithMessages) => groupsWithMessages.id === groupId);
-    setCurrentGroupIndex(groupIndex);
-    const newGroupWithMessages = groupsWithMessages[groupIndex];
-    const messages = newGroupWithMessages?.messages ?? [];
-    setCurrentGroup(newGroupWithMessages);
-    setMessages(messages);
+    const clickedGroup = allGroups.find((g: SidebarGroup) => {return g.id == groupId})
+    setCurrentGroup(clickedGroup);
+    refreshMessages();
+
+    setShowAddMember(false);
+    setShowCreateGroupForm(false);
+    setShowChatView(true);
   };
 
   const onClickSend = () => {
@@ -83,19 +100,28 @@ const Home: NextPage<{currentUser: User, groupsWithMessages: GroupAndMessages[]}
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ 
-        message, groupId, userId
+        action: DBMessageAction.create, message, groupId, userId
       })
     };
-    const newMessage = await fetch('/api/messages', request);
-    if (newMessage.status != 200) {
+    const newMessage = await fetch(`/api/messages?groupId=${groupId}`, request);
+    if (!newMessage.ok) {
       console.error("Message failed to send");
       return;
     }
     const messageSent = await newMessage.json();
     const m: MessageWithSender = {...messageSent}
     m.sender = currentUser;
-    setMessages(messages.concat(m));
+    refreshMessages();
+    refreshGroups();
+    //setMessages(messages.concat(m));
   };
+
+  if (userLoading || groupsLoading) {
+    return <div>Loading</div>
+  } else if (userError || groupsError) {
+    console.error("User not fetched")
+    return <div>Error</div>
+  } else
 
   return (
     <>
@@ -104,15 +130,15 @@ const Home: NextPage<{currentUser: User, groupsWithMessages: GroupAndMessages[]}
         <meta name="description" content="Messaging App" />
         <link rel="icon" href="/favicon.ico" />
       </Head>
-      <main className={`flex flex-row h-screen w-screen bg-black ${oxanium.className}`}>
+      <main className={`flex flex-row h-screen w-screen bg-black p-1 ${oxanium.className}`}>
         <Sidebar 
           userName={currentUser.name} 
           userImageUrl={currentUser.image} 
-          groupsAndMessages={gwm} 
+          groups={allGroups} 
           clickGroupFn={onClickGroup} 
           createGroupFn={openCreateGroupForm}
         />
-        { currentGroup && showChatView ? 
+        { currentGroup && showChatView && messages ? 
           <ChatView 
             chatViewRef={chatViewRef} 
             textBoxRef={textAreaRef} 
@@ -120,22 +146,23 @@ const Home: NextPage<{currentUser: User, groupsWithMessages: GroupAndMessages[]}
             messages={messages} 
             currentUserId={currentUser.id} 
             sendMessageFn={onClickSend} 
+            addMemberFn={openAddMemberForm}
           />
           : undefined 
         }
           
-        { currentGroupIndex === undefined && showChatView ?
+        { currentGroup === undefined && showChatView ?
           <CreateGroupCTA showFormFn={openCreateGroupForm}/>
           : undefined
         }
 
         { showCreateGroupForm ? 
-          <CreateGroupForm userId={currentUser.id} closeFn={closeCreateGroupForm} />
+          <CreateGroupForm userId={currentUser.id} closeFn={closeCreateGroupForm} createGroupCallback={onGroupCreated} />
           : undefined
         }
 
         { showAddMember && currentGroup ? 
-          <AddGroupMemberForm groupId={currentGroup.id} closeFn={closeAddMemberForm} />
+          <GroupMemberForm groupId={currentGroup.id} userId={currentUser.id} closeFn={closeAddMemberForm} addMemberCallback={() => {return}} removeMemberCallback={onMemberRemoved} />
           : undefined 
         }
 
@@ -147,32 +174,10 @@ const Home: NextPage<{currentUser: User, groupsWithMessages: GroupAndMessages[]}
 const getUserWithGroups = async (prisma: PrismaClient, id: string) => {
   const user = await prisma.user.findUnique({
     where: { id: id },
-    include: { groups: true }
+    include: { groups: { include: { members: true } } }
   });
 
   return user;
-}
-
-const getMessagesByGroup = async (prisma: PrismaClient, groupId: number) => {
-  const messages: MessageWithSender[] = await prisma.message.findMany({
-    where: { groupId: groupId },
-    include: {sender: true}
-  });
-
-  return messages;
-}
-
-const getMembersByGroup = async (prisma: PrismaClient, groupId: number) => {
-  const group = await prisma.group.findUnique({
-    where: { id: groupId },
-    include: { members: true}
-  });
-
-  if (!group) {
-    return null;
-  }
-
-  return group.members;
 }
 
 export const getServerSideProps: GetServerSideProps = async (context) => {
@@ -185,24 +190,7 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
       }
     }
   }
-
-  const prisma = new PrismaClient();
-  try {
-    const currentUserWithGroups = await getUserWithGroups(prisma, session.user!.id);
-    const currentUser = currentUserWithGroups as User;
-    const groupsList = currentUserWithGroups?.groups ?? [];
-    const groupsWithMessagesPromise = groupsList?.map(async (group) => {
-      return {...group, messages: await getMessagesByGroup(prisma, group.id)}
-    });
-    const groupsWithMessages = await Promise.all(groupsWithMessagesPromise)
-    console.log(groupsWithMessages);
-    return { props: { currentUser , groupsWithMessages: JSON.parse(JSON.stringify(groupsWithMessages)) } };
-  } catch(e) {
-    console.error(e)
-    return {props: {}};
-  } finally {
-    prisma.$disconnect();
-  }
+  return { props: { signin: session.user!.id } };
 }
 
 export default Home;

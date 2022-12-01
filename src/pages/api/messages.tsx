@@ -1,49 +1,45 @@
 import type { Message } from "@prisma/client";
 import type { NextApiRequest, NextApiResponse } from "next";
+import { DBMessageAction } from "..";
 
 import { prisma } from "../../server/db/client";
+import { createNewMessageInGroup, getMessagesByGroup, MessageWithSender } from "../../server/db/queries";
 
 const messagesHandler = async (req: NextApiRequest, res: NextApiResponse) => {
     const {
-        body: {groupId, userId, message},
+        query: { groupId },
+        body: { action, userId, message },
         method,
     } = req; 
 
     try {
         switch (method) {
             case 'GET':
-                if (!groupId) {
-                    return res.status(500).send({error: "Missing parameter: groupId"});
-                }
-                const messages: Message[] | undefined = (await prisma.group.findUnique({
-                    where: { id: Number.parseInt(groupId as string) },
-                    include: { messages: true },
-                }))?.messages;
-                if (messages === undefined) {
-                    return res.status(500).send({error: "Unable to find messages"});
-                }
+                if (!groupId) return res.status(500).send({error: "Missing parameter: groupId"});
+
+                const messages: MessageWithSender[] = await getMessagesByGroup(Number.parseInt(groupId as string));
+                
+                if (messages === undefined) return res.status(500).send({error: "Unable to find messages"});
+
                 return res.status(200).send(messages);
 
              case 'PUT':
-                const missing = [];
-                console.log(req);
-                if (!userId) missing.push("userId");
-                if (!groupId) missing.push("groupId");
-                if (!message) missing.push("message");
-                if (missing.length > 0) return res.status(500).send({error: `Missing parameters ${missing}`});
+                if (!action) return res.status(500).send({error: "Missing action parameter"});
 
-                const newMessage = await prisma.message.create({
-                    data: {
-                        message: message as string,
-                        group: {
-                            connect: { id: Number.parseInt(groupId as string) }
-                        },
-                        sender: {
-                            connect: { id: userId as string }
-                        },
-                    }
-                });
-                return res.status(200).json(newMessage);
+                const missing = [];
+                if (!groupId) missing.push("groupId");
+                if (!userId) missing.push("userId");
+                if (!message) missing.push("message");
+                if (missing.length > 0) return res.status(500).send({error: `Missing parameters: ${missing}`});
+
+                switch (action) {
+                    case DBMessageAction.create:
+                        const newMessage = await createNewMessageInGroup(message, userId, Number.parseInt(groupId as string))
+                        return res.status(200).json(newMessage);
+                    
+                    default:
+                        return res.status(500).send({error: `Invalid action: ${action}`})
+                }
 
             default:
                 res.setHeader('Allow', ['GET', 'PUT'])
